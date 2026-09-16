@@ -1,0 +1,30 @@
+# Single all-in-one messaging lab image (for local build/test before Docker Hub push)
+services:
+  messaging-lab:
+    build:
+      context: ./dockerfiles/all-in-one
+      dockerfile: Dockerfile
+    image: messaging-lab:latest
+    container_name: messaging-lab
+    ports:
+      # Redis
+      - "6379:6379"
+      # ActiveMQ (defaults)
+      - "61616:61616"
+      - "61613:61613"
+      - "1883:1883"
+      - "5672:5672"
+      - "8161:8161"
+      # RabbitMQ (AMQP remapped; management default)
+      - "5675:5675"
+      - "15672:15672"
+      # Kafka
+      - "9092:9092"
+      # NATS
+      - "4222:4222"
+      - "8222:8222"
+      # Demos
+      - "5000:5000"
+      - "8086:8086"
+    shm_size: "1gb"
+    mem_limit: 8g

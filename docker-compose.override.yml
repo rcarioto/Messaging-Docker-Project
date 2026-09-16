@@ -1,0 +1,11 @@
+# Local overrides: skip broken images unless profile "full" is enabled.
+services:
+  spread:
+    # ghcr.io/robertchase/spread pull denied
+    profiles:
+      - full
+
+  gearman:
+    # artefactual/gearman image unavailable
+    profiles:
+      - full

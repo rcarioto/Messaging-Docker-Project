@@ -1,0 +1,565 @@
+version: '3.8'
+
+services:
+  # Apache ActiveMQ
+  activemq:
+    image: apache/activemq-classic:5.17.6
+    container_name: activemq
+    ports:
+      - "61616:61616"  # OpenWire
+      - "61613:61613"  # STOMP
+      - "1883:1883"    # MQTT
+      - "5672:5672"    # AMQP
+      - "8161:8161"    # Web Console
+    environment:
+      - ACTIVEMQ_ADMIN_LOGIN=admin
+      - ACTIVEMQ_ADMIN_PASSWORD=admin
+    volumes:
+      - ./config/activemq/conf:/opt/activemq/conf
+      - ./data/activemq:/opt/activemq/data
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8161/admin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      - "5675:5672"    # alternate AMQP: ActiveMQ keeps default 5672
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - ./config/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - ./data/rabbitmq:/var/lib/rabbitmq
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Zookeeper (for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - ./data/zookeeper:/var/lib/zookeeper/data
+      - ./data/zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Apache Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    volumes:
+      - ./data/kafka:/var/lib/kafka/data
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8090:8080"  # alternate: Pulsar keeps default admin 8080
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - messaging-network
+
+  # Redis
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./data/redis:/data
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Commander
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - messaging-network
+
+  # Apache Pulsar
+  pulsar:
+    image: apachepulsar/pulsar:3.2.2
+    container_name: pulsar
+    ports:
+      - "6650:6650"    # Pulsar binary protocol
+      - "8080:8080"    # Web admin
+    command: >
+      bash -c "
+        bin/pulsar standalone
+      "
+    volumes:
+      - ./data/pulsar:/pulsar/data
+      - ./data/pulsar-logs:/pulsar/logs
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/brokers/standalone"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NATS
+  nats:
+    image: nats:2.10.7-alpine
+    container_name: nats
+    ports:
+      - "4222:4222"    # NATS client port
+      - "8222:8222"    # HTTP monitor port
+    command: nats-server --jetstream --http_port 8222
+    volumes:
+      - ./data/nats:/data
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ZeroMQ (with development tools)
+  zeromq:
+    image: ubuntu:22.04
+    container_name: zeromq
+    ports:
+      - "5555:5555"
+      - "5556:5556"
+      - "5557:5557"
+    volumes:
+      - ./config/zeromq:/app
+      - ./samples/zeromq:/samples
+    working_dir: /app
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y libzmq3-dev python3-pip nodejs npm
+        pip3 install pyzmq
+        npm install -g zmq
+        tail -f /dev/null
+      "
+    networks:
+      - messaging-network
+
+  # Apache RocketMQ
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.1.4
+    container_name: rocketmq-namesrv
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+    volumes:
+      - ./data/rocketmq/logs:/home/rocketmq/logs
+      - ./data/rocketmq/store:/home/rocketmq/store
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "echo 'namesrvAddr=localhost:9876' > /tmp/namesrv.properties && java -jar /home/rocketmq/lib/rocketmq-tools-5.1.4.jar org.apache.rocketmq.tools.command.namesrv.UpdateNamesrvConfig -n localhost:9876 -k clusterName -v DefaultCluster"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.1.4
+    container_name: rocketmq-broker
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    depends_on:
+      - rocketmq-namesrv
+    command: >
+      sh mqbroker -n rocketmq-namesrv:9876
+    volumes:
+      - ./data/rocketmq/logs:/home/rocketmq/logs
+      - ./data/rocketmq/store:/home/rocketmq/store
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "java -jar /home/rocketmq/lib/rocketmq-tools-5.1.4.jar org.apache.rocketmq.tools.command.broker.UpdateBrokerConfig -n localhost:9876 -c DefaultCluster -k brokerName -v broker-a"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # RocketMQ Dashboard
+  rocketmq-dashboard:
+    image: apacherocketmq/rocketmq-dashboard:1.0.0
+    container_name: rocketmq-dashboard
+    ports:
+      - "8082:8080"
+    environment:
+      - JAVA_OPTS=-Drocketmq.namesrv.addr=rocketmq-namesrv:9876
+    depends_on:
+      - rocketmq-namesrv
+      - rocketmq-broker
+    networks:
+      - messaging-network
+
+  # EMQ X (MQTT Broker)
+  emqx:
+    image: emqx/emqx:5.3.0
+    container_name: emqx
+    ports:
+      - "1885:1883"    # alternate MQTT: ActiveMQ keeps default 1883
+      - "8885:8883"    # alternate MQTT/SSL
+      - "8083:8083"    # MQTT/WebSocket
+      - "8084:8084"    # MQTT/WebSocket/SSL
+      - "18083:18083"  # Dashboard
+    environment:
+      - EMQX_NAME=emqx
+      - EMQX_HOST=localhost
+    volumes:
+      - ./data/emqx:/opt/emqx/data
+      - ./data/emqx-logs:/opt/emqx/log
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18083/api/v5/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Apache Artemis (ActiveMQ 6)
+  artemis:
+    image: apache/activemq-artemis:2.31.2
+    container_name: artemis
+    ports:
+      - "62616:61616"  # alternate OpenWire: ActiveMQ Classic keeps 61616
+      - "62613:61613"  # alternate STOMP: ActiveMQ Classic keeps 61613
+      - "8261:8161"    # alternate console: ActiveMQ Classic keeps 8161
+    environment:
+      - ARTEMIS_USER=admin
+      - ARTEMIS_PASSWORD=admin
+      - ANONYMOUS_LOGIN=true
+    volumes:
+      - ./data/artemis:/var/lib/artemis-instance
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8161/console"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Apache Qpid
+  qpid:
+    image: apache/qpid-broker:latest
+    container_name: qpid
+    ports:
+      - "5673:5672"  # alternate AMQP (ActiveMQ 5672, RabbitMQ 5675)
+    networks:
+      - messaging-network
+
+  # Benthos
+  benthos:
+    image: jeffail/benthos:latest
+    container_name: benthos
+    ports:
+      - "4195:4195"  # HTTP API
+    networks:
+      - messaging-network
+
+  # Liftbridge
+  liftbridge:
+    image: liftbridge/liftbridge:latest
+    container_name: liftbridge
+    ports:
+      - "9292:9292"  # gRPC/HTTP API
+    networks:
+      - messaging-network
+
+  # NSQ
+  nsqd:
+    image: nsqio/nsq
+    container_name: nsqd
+    command: /nsqd --broadcast-address=nsqd --lookupd-tcp-address=nsqlookupd:4160
+    ports:
+      - "4150:4150"  # TCP
+      - "4151:4151"  # HTTP
+    depends_on:
+      - nsqlookupd
+    networks:
+      - messaging-network
+
+  nsqlookupd:
+    image: nsqio/nsq
+    container_name: nsqlookupd
+    command: /nsqlookupd
+    ports:
+      - "4161:4161"  # HTTP
+    networks:
+      - messaging-network
+
+  # Tarantool
+  tarantool:
+    image: tarantool/tarantool:latest
+    container_name: tarantool
+    ports:
+      - "3301:3301"
+    networks:
+      - messaging-network
+
+  # Crossbar.io (WAMP)
+  crossbar:
+    image: crossbario/crossbar
+    container_name: crossbar
+    ports:
+      - "8085:8080"  # WAMP/WebSocket (use 8085 externally)
+    networks:
+      - messaging-network
+
+  # Haraka (SMTP)
+  haraka:
+    image: haraka/haraka
+    container_name: haraka
+    ports:
+      - "2525:25"  # SMTP (use 2525 externally)
+    networks:
+      - messaging-network
+
+  # RSMB (Really Small Message Broker)
+  rsmb:
+    image: eclipse-mosquitto:2.0
+    container_name: rsmb
+    ports:
+      - "1884:1883"  # MQTT (use 1884 externally)
+    networks:
+      - messaging-network
+
+  # Beanstalkd
+  beanstalkd:
+    image: schickling/beanstalkd
+    container_name: beanstalkd
+    ports:
+      - "11300:11300"
+    networks:
+      - messaging-network
+
+  # Gearman
+  gearman:
+    image: artefactual/gearman
+    container_name: gearman
+    ports:
+      - "4730:4730"
+    networks:
+      - messaging-network
+
+  # StompServer
+  stompserver:
+    image: schickling/stompserver
+    container_name: stompserver
+    ports:
+      - "61614:61613"  # STOMP (use 61614 externally)
+    networks:
+      - messaging-network
+
+  # KubeMQ
+  kubemq:
+    image: kubemq/kubemq-community:latest
+    container_name: kubemq
+    ports:
+      - "50000:50000"
+    networks:
+      - messaging-network
+
+  # Spread Toolkit
+  spread:
+    image: ghcr.io/robertchase/spread:latest
+    container_name: spread
+    ports:
+      - "4803:4803"
+    networks:
+      - messaging-network
+
+  # Faye
+  faye:
+    image: faye/faye
+    container_name: faye
+    ports:
+      - "9293:9292"  # alternate: Liftbridge keeps 9292
+    networks:
+      - messaging-network
+
+  # Pushpin
+  pushpin:
+    image: fanout/pushpin
+    container_name: pushpin
+    ports:
+      - "7999:7999"
+    networks:
+      - messaging-network
+
+  # Hermes (Allegro)
+  hermes:
+    build:
+      context: ./dockerfiles/hermes
+      dockerfile: Dockerfile
+    container_name: hermes
+    ports:
+      - "8086:8080"  # HTTP API
+      - "8087:8081"  # Management API
+      - "8088:8082"  # Frontend
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:29092
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SimpleMQ
+  simplemq:
+    build:
+      context: ./dockerfiles/simplemq
+      dockerfile: Dockerfile
+    container_name: simplemq
+    ports:
+      - "5000:5000"  # HTTP API
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Zyre Demo
+  zyre:
+    build:
+      context: ./dockerfiles/zyre
+      dockerfile: Dockerfile
+    container_name: zyre
+    ports:
+      - "5670:5670"  # Zyre port
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "zyre_demo.py", "|", "grep", "-v", "grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Chronicle Queue Demo
+  chronicle:
+    build:
+      context: ./dockerfiles/chronicle
+      dockerfile: Dockerfile
+    container_name: chronicle
+    volumes:
+      - ./data/chronicle:/tmp/chronicle-demo
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "ChronicleDemo", "|", "grep", "-v", "grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # OpenDDS Demo
+  opendds:
+    build:
+      context: ./dockerfiles/dds/opendds
+      dockerfile: Dockerfile
+    container_name: opendds
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "demo", "|", "grep", "-v", "grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Fast DDS Demo
+  fastdds:
+    build:
+      context: ./dockerfiles/dds/fastdds
+      dockerfile: Dockerfile
+    container_name: fastdds
+    networks:
+      - messaging-network
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "fastdds_demo.py", "|", "grep", "-v", "grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  messaging-network:
+    driver: bridge
+
+volumes:
+  activemq-data:
+  rabbitmq-data:
+  zookeeper-data:
+  kafka-data:
+  redis-data:
+  pulsar-data:
+  nats-data:
+  rocketmq-data:
+  emqx-data:
+  artemis-data: 
