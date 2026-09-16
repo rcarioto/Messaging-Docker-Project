@@ -1,6 +1,8 @@
 # Quick Start Guide
 
-## 🚀 Get Started in 3 Steps
+For the **all-in-one Docker Hub image** (`docker pull` then `docker run`), see **[docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)** and the README “Option A” section.
+
+## Full Compose stack in 3 steps
 
 ### 1. Prerequisites
 - Docker and Docker Compose installed
@@ -9,16 +11,19 @@
 
 ### 2. Start the Stack
 ```bash
-# Clone or download this project
+# Clone this project
 git clone https://github.com/rcarioto/Messaging-Docker-Project.git
 cd Messaging-Docker-Project
 
 # Make scripts executable (if not already done)
 chmod +x start.sh tests/run_tests.sh
 
-# Start all messaging middleware services
+# Pull images, then start all messaging middleware services
+# (./start.sh runs docker compose pull, then docker compose up -d)
 ./start.sh
 ```
+
+You do **not** need to pull `rcarioto/messaging-lab` for the Compose stack — that image is only for the all-in-one path.
 
 ### 3. Verify Everything Works
 ```bash
