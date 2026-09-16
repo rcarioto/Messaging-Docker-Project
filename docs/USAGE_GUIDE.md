@@ -108,15 +108,18 @@ curl -s -X POST http://localhost:8086/topics/demo \
 
 ## Full multi-container stack
 
-A separate Docker Compose layout in this GitHub repo runs a larger set of brokers as individual containers (Pulsar, RocketMQ, EMQX, Artemis, DDS demos, and more). It needs about **8 GB+ RAM**.
+This GitHub repo also defines a Docker Compose layout that runs a larger set of brokers as individual containers (Pulsar, RocketMQ, EMQX, Artemis, DDS demos, and more). It needs about **8 GB+ RAM**.
+
+You do **not** need to pull `rcarioto/messaging-lab` for this path. Clone the repo and let Compose pull/build service images:
 
 ```bash
 git clone https://github.com/rcarioto/Messaging-Docker-Project.git
 cd Messaging-Docker-Project
-docker compose up -d
+docker compose pull
+docker compose up -d --build
 ```
 
-See `README.md` and `QUICK_START.md` in that repo for service URLs and credentials.
+See `README.md` and `QUICK_START.md` for service URLs and credentials.
 
 ---
 

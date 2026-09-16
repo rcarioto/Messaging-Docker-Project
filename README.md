@@ -2,9 +2,16 @@
 
 This project provides a comprehensive Docker container setup with multiple open-source messaging middleware applications for development, testing, and learning purposes.
 
-**Usage:** pull-and-run instructions are in **[docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)**.  
-- All-in-one image: [`rcarioto/messaging-lab`](https://hub.docker.com/r/rcarioto/messaging-lab) on Docker Hub  
-- Full Compose stack: [`rcarioto/Messaging-Docker-Project`](https://github.com/rcarioto/Messaging-Docker-Project)
+There are **two ways** to run messaging software from this project:
+
+| Path | What it is | When to use |
+|---|---|---|
+| **All-in-one image** | Single container on Docker Hub | Quick local lab (Redis, ActiveMQ, RabbitMQ, Kafka, NATS, demos) |
+| **Compose stack** | Many containers from this repo | Full set of brokers (Pulsar, RocketMQ, EMQX, Artemis, DDS demos, …) |
+
+**Full pull/run details:** **[docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)**  
+- All-in-one image: [`rcarioto/messaging-lab`](https://hub.docker.com/r/rcarioto/messaging-lab)  
+- This Compose repo: [`rcarioto/Messaging-Docker-Project`](https://github.com/rcarioto/Messaging-Docker-Project)
 
 ## Included Messaging Middleware
 
@@ -105,26 +112,47 @@ This project provides a comprehensive Docker container setup with multiple open-
 ## Quick Start
 
 ### Prerequisites
-- Docker
-- Docker Compose
-- At least 8GB RAM available for Docker
+- Docker Engine or Docker Desktop
+- Docker Compose (v2: `docker compose`)
+- About **6–8 GB RAM** for the all-in-one image, or **8 GB+** for the full Compose stack
 
-### Running the Stack
+### Option A — All-in-one image (recommended for most users)
+
+**Pull the image from Docker Hub first**, then run it. Compose is not used for this path.
 
 ```bash
-# Clone and navigate to the project
+docker pull rcarioto/messaging-lab:latest
+
+docker run --rm --name messaging-lab --shm-size=1g \
+  -p 6379:6379 \
+  -p 61616:61616 -p 61613:61613 -p 1883:1883 -p 5672:5672 -p 8161:8161 \
+  -p 5675:5675 -p 15672:15672 \
+  -p 9092:9092 \
+  -p 4222:4222 -p 8222:8222 \
+  -p 5000:5000 -p 8086:8086 \
+  rcarioto/messaging-lab:latest
+```
+
+Ports, credentials, and smoke tests: **[docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)**.
+
+### Option B — Full multi-container Compose stack
+
+Clone this repo, then start Compose. A separate pull of `rcarioto/messaging-lab` is **not** required for this path — Compose pulls each service image (and builds custom demos) from the definitions in `docker-compose.yml`.
+
+Optional but recommended: pull published images first so downloads finish before containers start:
+
+```bash
 git clone https://github.com/rcarioto/Messaging-Docker-Project.git
 cd Messaging-Docker-Project
 
-# Start all services
-docker-compose up -d
+docker compose pull          # refresh/pre-download Hub images
+docker compose up -d --build # start stack; build local demo images
 
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
+docker compose ps
+docker compose logs -f
 ```
+
+Or use `./start.sh`, which creates `data/` / `config/` dirs, runs `docker compose pull`, then `docker compose up -d`.
 
 ### Individual Service Management
 
@@ -301,7 +329,7 @@ docker-compose logs -f rabbitmq
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
