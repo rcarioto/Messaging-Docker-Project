@@ -306,6 +306,7 @@ Use the included performance testing scripts in `tests/` directory:
 1. **Port Conflicts**: Ensure ports are not used by other services
 2. **Memory Issues**: Increase Docker memory allocation
 3. **Permission Issues**: Check file permissions in config directories
+4. **Host cannot reach published ports** (Redis/Kafka timeouts or “connection reset by peer” while `docker exec` still works): often Avahi has broken the `docker0` bridge. See **[docs/TROUBLESHOOTING_AVAHI_DOCKER.md](docs/TROUBLESHOOTING_AVAHI_DOCKER.md)** for symptoms, cause, immediate repair, and a lasting Avahi fix.
 
 ### Logs and Debugging
 ```bash

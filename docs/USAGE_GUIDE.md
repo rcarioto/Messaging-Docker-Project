@@ -131,6 +131,7 @@ See `README.md` and `QUICK_START.md` for service URLs and credentials.
 | Container unhealthy / OOM | Give Docker more RAM (6–8 GB+); check `docker logs messaging-lab` |
 | `permission denied` on Docker socket | Add your user to the `docker` group, then re-login |
 | Wrong Docker context | `docker context use default` |
+| Host tools timeout / “connection reset” on Redis, Kafka, etc., while `docker exec` works | Often a broken `docker0` bridge caused by Avahi — see **[TROUBLESHOOTING_AVAHI_DOCKER.md](TROUBLESHOOTING_AVAHI_DOCKER.md)** |
 
 ```bash
 docker logs messaging-lab
